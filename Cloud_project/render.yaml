@@ -1,0 +1,77 @@
+# Render Blueprint — Auto-provisions Web Service, Async RQ Worker, PostgreSQL, and Key-Value Redis
+services:
+  # 1. FastAPI Web Service + Static Dashboard
+  - type: web
+    name: studyflow-ai-web
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: studyflow-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: studyflow-redis
+          property: connectionString
+      - key: ENABLE_ASYNC_WORKER
+        value: "true"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET_NAME
+        value: studyflow-documents
+      - key: SECRET_KEY
+        generateValue: true
+
+  # 2. Redis RQ Async Background Worker (Large PDF Ingestion & Batch Exam Generation)
+  - type: worker
+    name: studyflow-ai-worker
+    runtime: docker
+    plan: starter
+    dockerCommand: rq worker studyflow_tasks --url $REDIS_URL
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: studyflow-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: studyflow-redis
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET_NAME
+        value: studyflow-documents
+
+  # 3. Managed Redis Instance for RQ Job Queue
+  - type: redis
+    name: studyflow-redis
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+databases:
+  # 4. Managed Render PostgreSQL Database
+  - name: studyflow-postgres
+    databaseName: studyflow_db
+    user: studyflow_user
+    plan: starter
